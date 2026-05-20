@@ -199,7 +199,6 @@ body::before{
   <div id="authScreen">
     <input type="password" id="adminPassInput" placeholder="Enter admin passkey..." autocomplete="off">
     <button onclick="authenticate()">Access</button>
-    <div class="auth-hint">Default passkey: <code>skillwar2025</code></div>
   </div>
 
   <div id="adminPanel">
@@ -258,7 +257,7 @@ body::before{
 var CFG = window.APP_CONFIG || {};
 var SUPABASE_URL = CFG.SUPABASE_URL || "";
 var SUPABASE_KEY = CFG.SUPABASE_KEY || "";
-var ADMIN_PASS = CFG.ADMIN_PASS || "skillwar2026";
+var ADMIN_PASS = CFG.ADMIN_PASS ;
 var POLL_INTERVAL = CFG.POLL_INTERVAL_ADMIN || 5000;
 
 var TEAMS = [
@@ -280,10 +279,7 @@ var useLive = false;
 function supaFetch(path,options){
   var opts=options||{};
   opts.headers=Object.assign({'apikey':SUPABASE_KEY,'Authorization':'Bearer '+SUPABASE_KEY},opts.headers||{});
-  return fetch(SUPABASE_URL+'/rest/v1'+path,opts).then(function(r){
-    if(r.status===204||r.headers.get('content-length')==='0')return null;
-    return r.json();
-  });
+  return fetch(SUPABASE_URL+'/rest/v1'+path,opts).then(function(r){return r.json()});
 }
 
 function pollData(){

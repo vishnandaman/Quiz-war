@@ -137,11 +137,18 @@ body::after{
   background:linear-gradient(135deg,var(--cyan),var(--purple));
   -webkit-background-clip:text;-webkit-text-fill-color:transparent;background-clip:text;
 }
+.voter-info{display:flex;align-items:center;justify-content:center;gap:10px;margin-top:8px}
 .voter-badge{
-  display:inline-block;margin-top:8px;padding:4px 16px;
+  display:inline-block;padding:4px 16px;
   background:rgba(0,240,255,0.08);border:1px solid rgba(0,240,255,0.2);
   border-radius:20px;font-size:0.85rem;color:var(--cyan);
 }
+.logout-btn{
+  padding:4px 12px;background:rgba(255,0,80,0.08);border:1px solid rgba(255,0,80,0.25);
+  border-radius:20px;font-family:'Orbitron',monospace;font-size:0.6rem;font-weight:700;
+  color:var(--magenta);cursor:pointer;letter-spacing:1px;transition:all 0.3s;
+}
+.logout-btn:hover{background:rgba(255,0,80,0.2);box-shadow:0 0 12px rgba(255,0,80,0.2)}
 
 /* ─── TABS ─── */
 .arena-tabs{display:flex;gap:12px;justify-content:center;margin:24px 0;flex-wrap:wrap}
@@ -483,11 +490,11 @@ body::after{
 <!-- ═══ NAME + EMAIL MODAL ═══ -->
 <div id="nameModal" class="hidden">
   <div class="name-modal-box">
-    <h2>IDENTIFY YOURSELF</h2>
+    <h2>Login</h2>
     <input type="text" id="inputName" class="modal-input" placeholder="Your name" maxlength="40" autocomplete="name">
     <input type="email" id="inputEmail" class="modal-input" placeholder="Your email" maxlength="80" autocomplete="email">
     <div class="modal-error" id="modalError"></div>
-    <button onclick="enterArena()">Deploy</button>
+    <button onclick="enterArena()">Let's Vote</button>
   </div>
 </div>
 
@@ -496,7 +503,10 @@ body::after{
   <div class="container">
     <div class="arena-header">
       <div class="arena-title">AGENT SKILL WAR</div>
-      <div class="voter-badge" id="voterBadge"></div>
+      <div class="voter-info">
+        <div class="voter-badge" id="voterBadge"></div>
+        <button class="logout-btn" onclick="logout()">EXIT</button>
+      </div>
     </div>
 
     <div class="arena-tabs">
@@ -551,7 +561,7 @@ body::after{
       <div class="energy-bar" id="bar-adoption"></div>
       <div class="energy-labels"><span>Needs Improvement</span><span>Excellent</span></div>
     </div>
-    <button class="btn-submit-rating" id="btnSubmitRating" onclick="submitRating()" disabled>Lock In Rating</button>
+    <button class="btn-submit-rating" id="btnSubmitRating" onclick="submitRating()" disabled>Submit Your Vote!</button>
   </div>
 </div>
 
@@ -568,12 +578,14 @@ body::after{
   </div>
 </div>
 
+<script src="config.js"></script>
 <script>
 /* ═══════════════════════════════════════
    CONFIG
    ═══════════════════════════════════════ */
-var SCRIPT_URL = "https://script.google.com/a/macros/redhat.com/s/AKfycbyK8yAoE9XmJpk6vA78Lgl1zoeSr5Un-HNiSzs-n3vQEhXlZ-BCmtpWar6SxuWXImHsEA/exec";
-var POLL_INTERVAL = 3000;
+var CFG = window.APP_CONFIG || {};
+var SCRIPT_URL = CFG.SCRIPT_URL || "";
+var POLL_INTERVAL = CFG.POLL_INTERVAL_VOTER || 8000;
 
 var TEAMS = [
   {id:"agent-fit",num:1,agent:"Agent-Fit",presenter:"Harshwardhan Patil",
@@ -684,7 +696,12 @@ function loadLocalState(){
 /* ═══════════════════════════════════════
    INIT
    ═══════════════════════════════════════ */
-function init(){
+function applyConfig(cfg){
+  if(cfg.SCRIPT_URL) SCRIPT_URL=cfg.SCRIPT_URL;
+  if(cfg.POLL_INTERVAL_VOTER) POLL_INTERVAL=cfg.POLL_INTERVAL_VOTER;
+}
+
+function boot(){
   if(SCRIPT_URL){
     useSheets=true;
     document.getElementById("connDot").className="conn-dot live";
@@ -706,6 +723,12 @@ function init(){
     document.getElementById("voterBadge").textContent=voterName;
     renderTeamCards();
   }
+}
+
+function init(){
+  fetch("/api/config").then(function(r){return r.json()}).then(function(cfg){
+    applyConfig(cfg);
+  }).catch(function(){}).finally(function(){boot()});
 }
 
 /* ═══ NAME + EMAIL ═══ */
@@ -738,6 +761,15 @@ function enterArena(){
 
 document.getElementById("inputName").addEventListener("keydown",function(e){if(e.key==="Enter"){e.preventDefault();document.getElementById("inputEmail").focus()}});
 document.getElementById("inputEmail").addEventListener("keydown",function(e){if(e.key==="Enter"){e.preventDefault();enterArena()}});
+
+function logout(){
+  voterName="";voterEmail="";myVotes={};
+  localStorage.removeItem("asw_voter2");
+  document.getElementById("arena").classList.add("hidden");
+  document.getElementById("landing").classList.remove("hidden");
+  document.getElementById("inputName").value="";
+  document.getElementById("inputEmail").value="";
+}
 
 /* ═══ VIEW SWITCHING ═══ */
 function showView(view){
@@ -779,8 +811,14 @@ function renderTeamCards(){
     else if(isVoted) badgeHtml='<div class="card-status-badge badge-rated">RATED</div>';
     else badgeHtml='<div class="card-status-badge badge-waiting">WAITING</div>';
 
-    var btnText=isVoted?"UPDATE RATING":"RATE THIS AGENT";
-    if(!isActive) btnText=isVoted?"RATED":"VOTING CLOSED";
+    var btnText, btnDisabled;
+    if(isVoted){
+      btnText="VOTED";btnDisabled=true;
+    } else if(isActive){
+      btnText="RATE THIS AGENT";btnDisabled=false;
+    } else {
+      btnText="VOTING CLOSED";btnDisabled=true;
+    }
 
     card.innerHTML=
       '<div class="team-number">#'+team.num+'</div>'+
@@ -788,7 +826,7 @@ function renderTeamCards(){
       '<div class="team-agent">'+team.agent+'</div>'+
       '<div class="team-presenter">'+team.presenter+'</div>'+
       '<div class="team-desc">'+team.desc+'</div>'+
-      '<button class="team-card-btn'+(isVoted&&isActive?" btn-voted":"")+'" '+(isActive?'onclick="openRatingModal(\''+team.id+'\')"':'disabled')+'>'+btnText+'</button>';
+      '<button class="team-card-btn'+(isVoted?" btn-voted":"")+'" '+(btnDisabled?'disabled':'onclick="openRatingModal(\''+team.id+'\')"')+'>'+btnText+'</button>';
     grid.appendChild(card);
   });
 }

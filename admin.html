@@ -253,10 +253,12 @@ body::before{
   </div>
 </div>
 
+<script src="config.js"></script>
 <script>
-var SCRIPT_URL = "https://script.google.com/a/macros/redhat.com/s/AKfycbyK8yAoE9XmJpk6vA78Lgl1zoeSr5Un-HNiSzs-n3vQEhXlZ-BCmtpWar6SxuWXImHsEA/exec";
-var ADMIN_PASS = "skillwar2025";
-var POLL_INTERVAL = 5000;
+var CFG = window.APP_CONFIG || {};
+var SCRIPT_URL = CFG.SCRIPT_URL || "";
+var ADMIN_PASS = CFG.ADMIN_PASS || "skillwar2025";
+var POLL_INTERVAL = CFG.POLL_INTERVAL_ADMIN || 5000;
 
 var TEAMS = [
   {id:"agent-fit",num:1,agent:"Agent-Fit",presenter:"Harshwardhan Patil"},
@@ -310,6 +312,12 @@ function sendConfig(){
     .then(function(){setTimeout(pollData,1000)})
     .catch(function(e){console.warn("Config failed:",e);showToast("Config update failed","error")});
 }
+
+fetch("/api/config").then(function(r){return r.json()}).then(function(cfg){
+  if(cfg.SCRIPT_URL) SCRIPT_URL=cfg.SCRIPT_URL;
+  if(cfg.ADMIN_PASS) ADMIN_PASS=cfg.ADMIN_PASS;
+  if(cfg.POLL_INTERVAL_ADMIN) POLL_INTERVAL=cfg.POLL_INTERVAL_ADMIN;
+}).catch(function(){});
 
 function authenticate(){
   if(document.getElementById("adminPassInput").value===ADMIN_PASS){

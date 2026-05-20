@@ -623,7 +623,10 @@ var useLive = false;
 function supaFetch(path,options){
   var opts=options||{};
   opts.headers=Object.assign({'apikey':SUPABASE_KEY,'Authorization':'Bearer '+SUPABASE_KEY},opts.headers||{});
-  return fetch(SUPABASE_URL+'/rest/v1'+path,opts).then(function(r){return r.json()});
+  return fetch(SUPABASE_URL+'/rest/v1'+path,opts).then(function(r){
+    if(r.status===204||r.headers.get('content-length')==='0')return null;
+    return r.json();
+  });
 }
 
 function pollData(){
@@ -643,6 +646,17 @@ function pollData(){
         name:r.voter_name,usefulness:r.usefulness,usability:r.usability,adoption:r.adoption,ts:r.created_at
       };
     });
+
+    if(voterEmail){
+      myVotes={};
+      Object.keys(allVotes).forEach(function(tid){
+        if(allVotes[tid][voterEmail]){
+          var v=allVotes[tid][voterEmail];
+          myVotes[tid]={usefulness:v.usefulness,usability:v.usability,adoption:v.adoption};
+        }
+      });
+      localStorage.setItem("asw_voter2",JSON.stringify({name:voterName,email:voterEmail,votes:myVotes}));
+    }
 
     var cfg=cfgRows[0]||{};
     prevActiveTeam=activeTeam;
@@ -678,9 +692,9 @@ function sendVote(teamId,vote){
     updateLeaderboard();
     return;
   }
-  supaFetch('/votes',{
+  supaFetch('/votes?on_conflict=voter_email,team_id',{
     method:'POST',
-    headers:{'Content-Type':'application/json','Prefer':'resolution=merge-duplicates'},
+    headers:{'Content-Type':'application/json','Prefer':'resolution=merge-duplicates,return=minimal'},
     body:JSON.stringify({voter_email:voterEmail,voter_name:voterName,team_id:teamId,
       usefulness:vote.usefulness,usability:vote.usability,adoption:vote.adoption})
   }).then(function(){setTimeout(pollData,1000)}).catch(function(e){

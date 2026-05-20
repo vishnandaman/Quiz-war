@@ -278,19 +278,11 @@ var useSheets = false;
 var useProxy = false;
 
 function sheetsGet(params){
-  return new Promise(function(resolve,reject){
-    var cbName='_cb'+Date.now()+Math.random().toString(36).substr(2,6);
-    params.callback=cbName;
-    var qs=new URLSearchParams(params);
-    qs.set('_t',Date.now());
-    var timeout=setTimeout(function(){cleanup();reject(new Error('Timeout'))},15000);
-    function cleanup(){clearTimeout(timeout);delete window[cbName];if(script.parentNode)script.parentNode.removeChild(script)}
-    window[cbName]=function(data){cleanup();resolve(data)};
-    var script=document.createElement('script');
-    script.src=SCRIPT_URL+'?'+qs.toString();
-    script.onerror=function(){cleanup();reject(new Error('Network error'))};
-    document.body.appendChild(script);
-  });
+  var qs=new URLSearchParams(params);
+  qs.set('_t',Date.now());
+  return fetch(SCRIPT_URL+'?'+qs.toString(),{redirect:'follow',credentials:'include'})
+    .then(function(r){return r.text()})
+    .then(function(t){return JSON.parse(t)});
 }
 
 function pollData(){

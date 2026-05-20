@@ -278,21 +278,16 @@ var useSheets = false;
 var useProxy = false;
 
 function sheetsGet(params){
-  var qs=new URLSearchParams(params);
-  qs.set('_t',Date.now());
-  if(useProxy){
-    return fetch('/api/sheets?'+qs.toString()).then(function(r){return r.json()});
-  }
   return new Promise(function(resolve,reject){
     var cbName='_cb'+Date.now()+Math.random().toString(36).substr(2,6);
     params.callback=cbName;
-    var qs2=new URLSearchParams(params);
-    qs2.set('_t',Date.now());
+    var qs=new URLSearchParams(params);
+    qs.set('_t',Date.now());
     var timeout=setTimeout(function(){cleanup();reject(new Error('Timeout'))},15000);
     function cleanup(){clearTimeout(timeout);delete window[cbName];if(script.parentNode)script.parentNode.removeChild(script)}
     window[cbName]=function(data){cleanup();resolve(data)};
     var script=document.createElement('script');
-    script.src=SCRIPT_URL+'?'+qs2.toString();
+    script.src=SCRIPT_URL+'?'+qs.toString();
     script.onerror=function(){cleanup();reject(new Error('Network error'))};
     document.body.appendChild(script);
   });
@@ -320,7 +315,6 @@ function sendConfig(){
 }
 
 fetch("/api/config").then(function(r){return r.json()}).then(function(cfg){
-  useProxy=true;
   if(cfg.SCRIPT_URL) SCRIPT_URL=cfg.SCRIPT_URL;
   if(cfg.ADMIN_PASS) ADMIN_PASS=cfg.ADMIN_PASS;
   if(cfg.POLL_INTERVAL_ADMIN) POLL_INTERVAL=cfg.POLL_INTERVAL_ADMIN;

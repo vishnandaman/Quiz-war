@@ -32,12 +32,6 @@ body::before{
 }
 @keyframes gridPulse{0%{opacity:0.04}100%{opacity:0.09}}
 
-body::after{
-  content:'';position:fixed;top:0;left:0;right:0;height:2px;z-index:1;
-  background:linear-gradient(90deg,transparent,var(--cyan),transparent);
-  animation:scanLine 3s linear infinite;
-}
-@keyframes scanLine{0%{top:0;opacity:0.6}100%{top:100vh;opacity:0}}
 
 .hidden{display:none!important}
 .container{position:relative;z-index:2;max-width:1200px;margin:0 auto;padding:0 16px}
@@ -481,7 +475,8 @@ body::after{
 
 <!-- ═══ LANDING ═══ -->
 <div id="landing">
-  <div class="landing-subtitle">AI Day &bull; Pune AI Collective</div>
+  <div class="landing-subtitle">Pune AI Collective</div>
+  <div class="landing-subtitle">Presents</div>
   <h1 class="landing-title">AGENT SKILL WAR</h1>
   <div class="landing-event">21 May 2026 &bull; <span>6 Agents. 1 Victor.</span></div>
   <button class="btn-enter" onclick="showNameModal()">Enter the Arena</button>

@@ -1,0 +1,428 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Command Center - Agent Skill War</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@400;700;900&family=Rajdhani:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+<style>
+*,*::before,*::after{margin:0;padding:0;box-sizing:border-box}
+:root{
+  --bg:#0a0a1a;--bg2:#0f0f2a;--cyan:#00f0ff;--magenta:#ff0080;--purple:#8b5cf6;
+  --gold:#ffd700;--green:#00ff64;
+  --glass:rgba(15,15,42,0.85);--glass-border:rgba(0,240,255,0.15);
+}
+body{font-family:'Rajdhani',sans-serif;background:var(--bg);color:#e0e0ff;min-height:100vh;padding:20px}
+body::before{
+  content:'';position:fixed;inset:0;z-index:0;opacity:0.05;
+  background-image:
+    linear-gradient(30deg,var(--cyan) 12%,transparent 12.5%,transparent 87%,var(--cyan) 87.5%),
+    linear-gradient(150deg,var(--cyan) 12%,transparent 12.5%,transparent 87%,var(--cyan) 87.5%),
+    linear-gradient(30deg,var(--cyan) 12%,transparent 12.5%,transparent 87%,var(--cyan) 87.5%),
+    linear-gradient(150deg,var(--cyan) 12%,transparent 12.5%,transparent 87%,var(--cyan) 87.5%),
+    linear-gradient(60deg,rgba(139,92,246,0.3) 25%,transparent 25.5%,transparent 75%,rgba(139,92,246,0.3) 75%),
+    linear-gradient(60deg,rgba(139,92,246,0.3) 25%,transparent 25.5%,transparent 75%,rgba(139,92,246,0.3) 75%);
+  background-size:80px 140px;
+  background-position:0 0,0 0,40px 70px,40px 70px,0 0,40px 70px;
+}
+.container{position:relative;z-index:2;max-width:900px;margin:0 auto}
+
+.conn-status{
+  position:fixed;top:12px;right:12px;z-index:50;display:flex;align-items:center;gap:6px;
+  padding:5px 12px;border-radius:20px;font-size:0.65rem;
+  font-family:'Orbitron',monospace;letter-spacing:1px;
+  background:var(--glass);border:1px solid var(--glass-border);
+}
+.conn-dot{width:8px;height:8px;border-radius:50%;flex-shrink:0}
+.conn-dot.live{background:var(--green);box-shadow:0 0 8px var(--green);animation:connPulse 2s infinite}
+.conn-dot.local{background:var(--gold);box-shadow:0 0 8px var(--gold)}
+@keyframes connPulse{0%,100%{opacity:1}50%{opacity:0.4}}
+
+.admin-header{text-align:center;padding:20px 0 30px}
+.admin-tag{
+  display:inline-block;padding:4px 16px;margin-bottom:8px;
+  background:rgba(255,0,80,0.1);border:1px solid rgba(255,0,80,0.3);
+  border-radius:20px;font-family:'Orbitron',monospace;font-size:0.65rem;
+  color:var(--magenta);letter-spacing:3px;text-transform:uppercase;
+}
+.admin-title{
+  font-family:'Orbitron',monospace;font-size:clamp(1.5rem,4vw,2.2rem);font-weight:900;
+  background:linear-gradient(135deg,var(--magenta),var(--purple));
+  -webkit-background-clip:text;-webkit-text-fill-color:transparent;background-clip:text;
+}
+
+/* ═══ AUTH ═══ */
+#authScreen{text-align:center;padding:60px 0}
+#authScreen input{
+  padding:14px 18px;width:280px;max-width:90%;background:rgba(255,0,80,0.05);
+  border:1px solid rgba(255,0,80,0.3);border-radius:8px;
+  color:#e0e0ff;font-family:'Rajdhani',sans-serif;font-size:1.1rem;
+  outline:none;text-align:center;
+}
+#authScreen input:focus{border-color:var(--magenta);box-shadow:0 0 15px rgba(255,0,80,0.2)}
+#authScreen input::placeholder{color:rgba(224,224,255,0.3)}
+#authScreen button{
+  display:block;margin:16px auto 0;padding:12px 36px;
+  font-family:'Orbitron',monospace;font-size:0.85rem;font-weight:700;
+  border:1px solid var(--magenta);background:rgba(255,0,80,0.1);
+  color:var(--magenta);cursor:pointer;border-radius:8px;
+  text-transform:uppercase;letter-spacing:2px;transition:all 0.3s;
+}
+#authScreen button:hover{background:rgba(255,0,80,0.2);box-shadow:0 0 20px rgba(255,0,80,0.3)}
+.auth-hint{font-size:0.8rem;color:rgba(224,224,255,0.3);margin-top:12px}
+
+#adminPanel{display:none}
+
+.panel{
+  background:var(--glass);border:1px solid var(--glass-border);border-radius:16px;
+  padding:24px;margin-bottom:20px;
+}
+.panel-title{
+  font-family:'Orbitron',monospace;font-size:0.9rem;font-weight:700;
+  color:var(--cyan);letter-spacing:2px;margin-bottom:16px;
+  padding-bottom:8px;border-bottom:1px solid rgba(0,240,255,0.1);
+}
+
+/* ─── STATS ─── */
+.stats-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:12px}
+.stat-card{
+  background:rgba(0,240,255,0.04);border:1px solid rgba(0,240,255,0.1);
+  border-radius:10px;padding:16px;text-align:center;
+}
+.stat-value{font-family:'Orbitron',monospace;font-size:1.8rem;font-weight:900;color:var(--cyan)}
+.stat-label{font-size:0.8rem;color:rgba(224,224,255,0.4);margin-top:4px}
+.stat-value.active-name{font-size:0.85rem;color:var(--green);word-break:break-word}
+
+/* ─── TEAM CONTROL LIST ─── */
+.team-ctrl{
+  display:flex;align-items:center;gap:16px;
+  padding:14px 16px;margin-bottom:8px;border-radius:10px;
+  background:rgba(0,240,255,0.02);border:1px solid rgba(0,240,255,0.06);
+  transition:all 0.3s;
+}
+.team-ctrl.is-active{
+  border-color:rgba(0,255,100,0.3);background:rgba(0,255,100,0.04);
+  box-shadow:0 0 15px rgba(0,255,100,0.08);
+}
+
+.tc-num{
+  font-family:'Orbitron',monospace;font-size:1.2rem;font-weight:900;
+  color:rgba(224,224,255,0.2);min-width:30px;text-align:center;
+}
+.team-ctrl.is-active .tc-num{color:var(--green)}
+
+.tc-info{flex:1;min-width:0}
+.tc-agent{font-family:'Orbitron',monospace;font-size:0.85rem;font-weight:700;color:var(--cyan)}
+.tc-presenter{font-size:0.78rem;color:rgba(224,224,255,0.35)}
+.tc-stats{font-size:0.75rem;color:rgba(224,224,255,0.3);margin-top:2px}
+.tc-stats span{color:var(--gold);font-weight:600}
+
+.tc-status{
+  font-family:'Orbitron',monospace;font-size:0.6rem;font-weight:700;
+  padding:4px 10px;border-radius:4px;letter-spacing:1.5px;min-width:65px;text-align:center;
+}
+.tc-status.st-active{background:rgba(0,255,100,0.15);color:var(--green);border:1px solid rgba(0,255,100,0.3);animation:stPulse 1.5s infinite alternate}
+@keyframes stPulse{0%{box-shadow:0 0 5px rgba(0,255,100,0.1)}100%{box-shadow:0 0 12px rgba(0,255,100,0.3)}}
+.tc-status.st-closed{background:rgba(224,224,255,0.05);color:rgba(224,224,255,0.3);border:1px solid rgba(224,224,255,0.08)}
+
+.tc-btn{
+  font-family:'Orbitron',monospace;font-size:0.65rem;font-weight:700;
+  padding:8px 16px;border-radius:6px;cursor:pointer;
+  text-transform:uppercase;letter-spacing:1.5px;transition:all 0.3s;
+  border:1px solid;min-width:90px;
+}
+.tc-btn.btn-activate{border-color:rgba(0,255,100,0.4);background:rgba(0,255,100,0.1);color:var(--green)}
+.tc-btn.btn-activate:hover{background:rgba(0,255,100,0.2);box-shadow:0 0 15px rgba(0,255,100,0.2)}
+.tc-btn.btn-deactivate{border-color:rgba(255,0,80,0.3);background:rgba(255,0,80,0.08);color:var(--magenta)}
+.tc-btn.btn-deactivate:hover{background:rgba(255,0,80,0.18);box-shadow:0 0 15px rgba(255,0,80,0.2)}
+
+/* ─── ACTIONS ─── */
+.btn-action{
+  font-family:'Orbitron',monospace;font-size:0.8rem;font-weight:700;
+  padding:14px 28px;border-radius:10px;cursor:pointer;
+  text-transform:uppercase;letter-spacing:2px;transition:all 0.3s;
+  display:inline-block;margin:8px 8px 8px 0;
+}
+.btn-winner{border:2px solid var(--gold);background:rgba(255,215,0,0.1);color:var(--gold)}
+.btn-winner:hover{background:rgba(255,215,0,0.2);box-shadow:0 0 30px rgba(255,215,0,0.3);transform:scale(1.03)}
+.btn-close-all{border:1px solid rgba(224,224,255,0.2);background:rgba(224,224,255,0.05);color:rgba(224,224,255,0.5);font-size:0.7rem}
+.btn-close-all:hover{background:rgba(224,224,255,0.1)}
+.btn-hide-winner{border:1px solid rgba(224,224,255,0.2);background:rgba(224,224,255,0.05);color:rgba(224,224,255,0.5);font-size:0.7rem}
+.btn-hide-winner:hover{background:rgba(224,224,255,0.1)}
+.btn-reset{border:1px solid rgba(255,0,80,0.3);background:rgba(255,0,80,0.05);color:var(--magenta);font-size:0.7rem}
+.btn-reset:hover{background:rgba(255,0,80,0.15)}
+
+/* ─── SCORES TABLE ─── */
+.scores-table{width:100%;border-collapse:collapse}
+.scores-table th{
+  font-family:'Orbitron',monospace;font-size:0.6rem;font-weight:700;
+  color:rgba(224,224,255,0.4);letter-spacing:1.5px;text-transform:uppercase;
+  padding:8px 10px;text-align:left;border-bottom:1px solid rgba(0,240,255,0.1);
+}
+.scores-table td{padding:10px;font-size:0.9rem;border-bottom:1px solid rgba(0,240,255,0.05)}
+.scores-table tr:hover td{background:rgba(0,240,255,0.03)}
+.td-agent{font-family:'Orbitron',monospace;font-size:0.78rem;font-weight:700;color:var(--cyan)}
+.td-score{font-family:'Orbitron',monospace;font-weight:700;color:var(--gold)}
+
+@media(max-width:600px){
+  .stats-grid{grid-template-columns:1fr 1fr}
+  .team-ctrl{flex-wrap:wrap;gap:10px}
+  .tc-btn{width:100%}
+  .scores-table th,.scores-table td{padding:6px 6px;font-size:0.8rem}
+}
+
+.toast{
+  position:fixed;bottom:24px;left:50%;transform:translateX(-50%);z-index:400;
+  padding:12px 24px;background:var(--bg2);border:1px solid var(--glass-border);
+  border-radius:10px;font-size:0.9rem;color:var(--cyan);max-width:90vw;text-align:center;
+  box-shadow:0 0 30px rgba(0,240,255,0.15);animation:toastIn 0.3s ease-out;
+}
+.toast.success{border-color:rgba(0,255,100,0.3);color:var(--green)}
+.toast.error{border-color:rgba(255,0,80,0.3);color:var(--magenta)}
+@keyframes toastIn{0%{transform:translateX(-50%) translateY(20px);opacity:0}100%{transform:translateX(-50%) translateY(0);opacity:1}}
+</style>
+</head>
+<body>
+
+<div class="conn-status">
+  <div class="conn-dot local" id="connDot"></div>
+  <span id="connLabel">LOCAL</span>
+</div>
+
+<div class="container">
+  <div class="admin-header">
+    <div class="admin-tag">Command Center</div>
+    <h1 class="admin-title">AGENT SKILL WAR</h1>
+  </div>
+
+  <div id="authScreen">
+    <input type="password" id="adminPassInput" placeholder="Enter admin passkey..." autocomplete="off">
+    <button onclick="authenticate()">Access</button>
+    <div class="auth-hint">Default passkey: <code>skillwar2025</code></div>
+  </div>
+
+  <div id="adminPanel">
+
+    <div class="panel">
+      <div class="panel-title">LIVE STATS</div>
+      <div class="stats-grid">
+        <div class="stat-card">
+          <div class="stat-value" id="statVoters">0</div>
+          <div class="stat-label">Total Voters</div>
+        </div>
+        <div class="stat-card">
+          <div class="stat-value" id="statRatings">0</div>
+          <div class="stat-label">Total Ratings</div>
+        </div>
+        <div class="stat-card">
+          <div class="stat-value" id="statTopScore">0.00</div>
+          <div class="stat-label">Top Score</div>
+        </div>
+        <div class="stat-card">
+          <div class="stat-value active-name" id="statActive">None</div>
+          <div class="stat-label">Active Team</div>
+        </div>
+      </div>
+    </div>
+
+    <div class="panel">
+      <div class="panel-title">VOTING CONTROL &mdash; One team at a time</div>
+      <div id="teamControlList"></div>
+      <div style="margin-top:16px">
+        <button class="btn-action btn-close-all" onclick="closeAllVoting()">Close All Voting</button>
+      </div>
+    </div>
+
+    <div class="panel">
+      <div class="panel-title">SCORE BREAKDOWN</div>
+      <table class="scores-table">
+        <thead>
+          <tr><th>Rank</th><th>Agent</th><th>Votes</th><th>Useful</th><th>Usable</th><th>Adopt</th><th>Avg</th></tr>
+        </thead>
+        <tbody id="scoresBody"></tbody>
+      </table>
+    </div>
+
+    <div class="panel">
+      <div class="panel-title">ACTIONS</div>
+      <button class="btn-action btn-winner" onclick="triggerReveal()">Reveal Winner</button>
+      <button class="btn-action btn-hide-winner" onclick="hideReveal()">Hide Winner</button>
+      <button class="btn-action btn-reset" onclick="confirmReset()">Reset All Votes</button>
+    </div>
+  </div>
+</div>
+
+<script>
+var SCRIPT_URL = "https://script.google.com/a/macros/redhat.com/s/AKfycbyK8yAoE9XmJpk6vA78Lgl1zoeSr5Un-HNiSzs-n3vQEhXlZ-BCmtpWar6SxuWXImHsEA/exec";
+var ADMIN_PASS = "skillwar2025";
+var POLL_INTERVAL = 5000;
+
+var TEAMS = [
+  {id:"agent-fit",num:1,agent:"Agent-Fit",presenter:"Harshwardhan Patil"},
+  {id:"git-skill",num:2,agent:"Git Skill",presenter:"Kedar Kamthe"},
+  {id:"commit-pr-autopilot",num:3,agent:"Commit & PR Autopilot",presenter:"Jay Gondaliya"},
+  {id:"figma-to-code",num:4,agent:"Figma to Code",presenter:"Nikhita More"},
+  {id:"ai-sentry",num:5,agent:"AI-Sentry",presenter:"RajVivek Kuraria"},
+  {id:"zeroday-sentinel",num:6,agent:"ZeroDay Sentinel",presenter:"Sushant Vishnu Nadavade"}
+];
+var CRITERIA = ["usefulness","usability","adoption"];
+
+var allVotes = {};
+var activeTeam = "";
+var revealState = false;
+var isPolling = false;
+var useSheets = false;
+
+function sheetsGet(params){
+  return new Promise(function(resolve,reject){
+    var cbName='_cb'+Date.now()+Math.random().toString(36).substr(2,6);
+    params.callback=cbName;
+    var qs=new URLSearchParams(params);
+    qs.set('_t',Date.now());
+    var timeout=setTimeout(function(){cleanup();reject(new Error('Timeout'))},15000);
+    function cleanup(){clearTimeout(timeout);delete window[cbName];if(script.parentNode)script.parentNode.removeChild(script)}
+    window[cbName]=function(data){cleanup();resolve(data)};
+    var script=document.createElement('script');
+    script.src=SCRIPT_URL+'?'+qs.toString();
+    script.onerror=function(){cleanup();reject(new Error('Network error'))};
+    document.body.appendChild(script);
+  });
+}
+
+function pollData(){
+  if(isPolling||!useSheets)return;isPolling=true;
+  sheetsGet({action:"getData"}).then(function(data){
+    if(data.error){console.warn(data.error);return}
+    allVotes=data.votes||{};
+    var cfg=data.config||{};
+    activeTeam=cfg.activeTeam||"";
+    revealState=cfg.revealWinner===true;
+    refreshAll();
+  }).catch(function(e){console.warn("Poll failed:",e)}).finally(function(){isPolling=false});
+}
+
+function startPolling(){pollData();setInterval(pollData,POLL_INTERVAL)}
+
+function sendConfig(){
+  if(!useSheets)return;
+  sheetsGet({action:"setConfig",activeTeam:activeTeam,revealWinner:String(revealState)})
+    .then(function(){setTimeout(pollData,1000)})
+    .catch(function(e){console.warn("Config failed:",e);showToast("Config update failed","error")});
+}
+
+function authenticate(){
+  if(document.getElementById("adminPassInput").value===ADMIN_PASS){
+    document.getElementById("authScreen").style.display="none";
+    document.getElementById("adminPanel").style.display="block";
+    if(SCRIPT_URL){
+      useSheets=true;document.getElementById("connDot").className="conn-dot live";
+      document.getElementById("connLabel").textContent="LIVE";startPolling();
+    } else {
+      var s=localStorage.getItem("asw_allVotes");if(s)allVotes=JSON.parse(s);refreshAll();
+    }
+  } else {showToast("Access denied","error")}
+}
+document.getElementById("adminPassInput").addEventListener("keydown",function(e){if(e.key==="Enter")authenticate()});
+
+function activateTeam(teamId){
+  activeTeam=teamId;sendConfig();refreshAll();
+  var t=TEAMS.find(function(x){return x.id===teamId});
+  showToast("Voting open: "+(t?t.agent:""),"success");
+}
+
+function deactivateTeam(){
+  activeTeam="";sendConfig();refreshAll();
+  showToast("Voting closed","success");
+}
+
+function closeAllVoting(){deactivateTeam()}
+
+function refreshAll(){
+  renderTeamControls();refreshStats();
+}
+
+function renderTeamControls(){
+  var list=document.getElementById("teamControlList");list.innerHTML="";
+  TEAMS.forEach(function(team){
+    var isActive=team.id===activeTeam;
+    var tv=allVotes[team.id]||{};var count=Object.keys(tv).length;
+    var avg=0;
+    if(count>0){
+      var total=0;Object.keys(tv).forEach(function(v){
+        var vote=tv[v];CRITERIA.forEach(function(c){total+=(vote[c]||0)});
+      });
+      avg=(total/(count*CRITERIA.length)).toFixed(2);
+    }
+
+    var row=document.createElement("div");
+    row.className="team-ctrl"+(isActive?" is-active":"");
+    row.innerHTML=
+      '<div class="tc-num">'+team.num+'</div>'+
+      '<div class="tc-info">'+
+        '<div class="tc-agent">'+team.agent+'</div>'+
+        '<div class="tc-presenter">'+team.presenter+'</div>'+
+        '<div class="tc-stats"><span>'+count+'</span> votes &bull; Avg: <span>'+avg+'</span></div>'+
+      '</div>'+
+      '<div class="tc-status '+(isActive?"st-active":"st-closed")+'">'+(isActive?"ACTIVE":"CLOSED")+'</div>'+
+      '<button class="tc-btn '+(isActive?"btn-deactivate":"btn-activate")+'" onclick="'+(isActive?"deactivateTeam()":"activateTeam('"+team.id+"')")+'">'+
+        (isActive?"Close":"Open")+
+      '</button>';
+    list.appendChild(row);
+  });
+}
+
+function refreshStats(){
+  var totalVoters={};var totalRatings=0;var topScore=0;
+  var rows=TEAMS.map(function(team){
+    var tv=allVotes[team.id]||{};var voters=Object.keys(tv);
+    voters.forEach(function(v){totalVoters[v]=1});
+    var count=voters.length;totalRatings+=count;
+    if(count===0)return{agent:team.agent,avg:0,count:0,u:"0.0",us:"0.0",a:"0.0"};
+    var sums={usefulness:0,usability:0,adoption:0};
+    voters.forEach(function(v){var vote=tv[v];CRITERIA.forEach(function(c){sums[c]+=(vote[c]||0)})});
+    var avg=CRITERIA.reduce(function(s,c){return s+sums[c]},0)/(count*CRITERIA.length);
+    if(avg>topScore)topScore=avg;
+    return{agent:team.agent,avg:parseFloat(avg.toFixed(2)),count:count,
+      u:(sums.usefulness/count).toFixed(1),us:(sums.usability/count).toFixed(1),a:(sums.adoption/count).toFixed(1)};
+  });
+  rows.sort(function(a,b){return b.avg-a.avg});
+
+  document.getElementById("statVoters").textContent=Object.keys(totalVoters).length;
+  document.getElementById("statRatings").textContent=totalRatings;
+  document.getElementById("statTopScore").textContent=topScore.toFixed(2);
+  var at=TEAMS.find(function(x){return x.id===activeTeam});
+  document.getElementById("statActive").textContent=at?at.agent:"None";
+
+  var tbody=document.getElementById("scoresBody");tbody.innerHTML="";
+  rows.forEach(function(r,i){
+    var tr=document.createElement("tr");
+    tr.innerHTML="<td>"+(i+1)+"</td>"+'<td class="td-agent">'+r.agent+"</td>"+'<td>'+r.count+"</td>"+
+      "<td>"+r.u+"</td><td>"+r.us+"</td><td>"+r.a+"</td>"+'<td class="td-score">'+r.avg.toFixed(2)+"</td>";
+    tbody.appendChild(tr);
+  });
+}
+
+function triggerReveal(){revealState=true;sendConfig();showToast("Winner revealed!","success")}
+function hideReveal(){revealState=false;sendConfig();showToast("Winner hidden","success")}
+
+function confirmReset(){
+  if(!confirm("Delete ALL votes? This cannot be undone."))return;
+  if(!confirm("Are you absolutely sure?"))return;
+  if(useSheets){
+    sheetsGet({action:"resetVotes"}).then(function(){allVotes={};refreshAll();setTimeout(pollData,1000)})
+      .catch(function(){showToast("Reset failed","error")});
+  }
+  allVotes={};localStorage.removeItem("asw_allVotes");refreshAll();
+  showToast("All votes cleared","success");
+}
+
+function showToast(msg,type){
+  var ex=document.querySelector(".toast");if(ex)ex.remove();
+  var t=document.createElement("div");t.className="toast"+(type?" "+type:"");t.textContent=msg;
+  document.body.appendChild(t);
+  setTimeout(function(){t.style.opacity="0";t.style.transition="opacity 0.3s";setTimeout(function(){t.remove()},300)},2500);
+}
+</script>
+</body>
+</html>

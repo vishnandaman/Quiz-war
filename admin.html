@@ -37,6 +37,11 @@ body::before{
 .conn-dot{width:8px;height:8px;border-radius:50%;flex-shrink:0}
 .conn-dot.live{background:var(--green);box-shadow:0 0 8px var(--green);animation:connPulse 2s infinite}
 .conn-dot.local{background:var(--gold);box-shadow:0 0 8px var(--gold)}
+.conn-dot.loading{background:var(--purple);box-shadow:0 0 8px var(--purple);animation:connPulse 1s infinite}
+.sync-label{font-size:0.6rem;margin-left:4px;letter-spacing:0.5px}
+.sync-label.saving{color:var(--gold)}
+.sync-label.saved{color:var(--green)}
+.sync-label.error{color:var(--magenta)}
 @keyframes connPulse{0%,100%{opacity:1}50%{opacity:0.4}}
 
 .admin-header{text-align:center;padding:20px 0 30px}
@@ -69,8 +74,10 @@ body::before{
   color:var(--magenta);cursor:pointer;border-radius:8px;
   text-transform:uppercase;letter-spacing:2px;transition:all 0.3s;
 }
-#authScreen button:hover{background:rgba(255,0,80,0.2);box-shadow:0 0 20px rgba(255,0,80,0.3)}
+#authScreen button:hover:not(:disabled){background:rgba(255,0,80,0.2);box-shadow:0 0 20px rgba(255,0,80,0.3)}
+#authScreen button:disabled,#authScreen input:disabled{opacity:0.45;cursor:not-allowed}
 .auth-hint{font-size:0.8rem;color:rgba(224,224,255,0.3);margin-top:12px}
+.auth-hint.error{color:var(--magenta)}
 
 #adminPanel{display:none}
 
@@ -133,9 +140,11 @@ body::before{
   border:1px solid;min-width:90px;
 }
 .tc-btn.btn-activate{border-color:rgba(0,255,100,0.4);background:rgba(0,255,100,0.1);color:var(--green)}
-.tc-btn.btn-activate:hover{background:rgba(0,255,100,0.2);box-shadow:0 0 15px rgba(0,255,100,0.2)}
+.tc-btn.btn-activate:hover:not(:disabled){background:rgba(0,255,100,0.2);box-shadow:0 0 15px rgba(0,255,100,0.2)}
 .tc-btn.btn-deactivate{border-color:rgba(255,0,80,0.3);background:rgba(255,0,80,0.08);color:var(--magenta)}
-.tc-btn.btn-deactivate:hover{background:rgba(255,0,80,0.18);box-shadow:0 0 15px rgba(255,0,80,0.2)}
+.tc-btn.btn-deactivate:hover:not(:disabled){background:rgba(255,0,80,0.18);box-shadow:0 0 15px rgba(255,0,80,0.2)}
+.tc-btn:disabled,.btn-action:disabled{opacity:0.4;cursor:not-allowed;pointer-events:none}
+.panel-locked{opacity:0.85;pointer-events:none}
 
 /* ─── ACTIONS ─── */
 .btn-action{
@@ -188,6 +197,7 @@ body::before{
 <div class="conn-status">
   <div class="conn-dot local" id="connDot"></div>
   <span id="connLabel">LOCAL</span>
+  <span id="syncStatus" class="sync-label"></span>
 </div>
 
 <div class="container">
@@ -197,8 +207,12 @@ body::before{
   </div>
 
   <div id="authScreen">
-    <input type="password" id="adminPassInput" placeholder="Enter admin passkey..." autocomplete="off">
-    <button onclick="authenticate()">Access</button>
+    <p class="auth-hint" id="authLoading">Loading configuration…</p>
+    <div id="authForm" style="display:none">
+      <input type="password" id="adminPassInput" placeholder="Enter admin passkey..." autocomplete="off" disabled>
+      <button id="authBtn" onclick="authenticate()" disabled>Access</button>
+      <p class="auth-hint">Secured via server config</p>
+    </div>
   </div>
 
   <div id="adminPanel">
@@ -225,11 +239,11 @@ body::before{
       </div>
     </div>
 
-    <div class="panel">
+    <div class="panel" id="votingControlPanel">
       <div class="panel-title">VOTING CONTROL &mdash; One team at a time</div>
       <div id="teamControlList"></div>
       <div style="margin-top:16px">
-        <button class="btn-action btn-close-all" onclick="closeAllVoting()">Close All Voting</button>
+        <button class="btn-action btn-close-all" id="btnCloseAll" onclick="closeAllVoting()">Close All Voting</button>
       </div>
     </div>
 
@@ -243,11 +257,11 @@ body::before{
       </table>
     </div>
 
-    <div class="panel">
+    <div class="panel" id="actionsPanel">
       <div class="panel-title">ACTIONS</div>
-      <button class="btn-action btn-winner" onclick="triggerReveal()">Reveal Winner</button>
-      <button class="btn-action btn-hide-winner" onclick="hideReveal()">Hide Winner</button>
-      <button class="btn-action btn-reset" onclick="confirmReset()">Reset All Votes</button>
+      <button class="btn-action btn-winner" id="btnReveal" onclick="triggerReveal()">Reveal Winner</button>
+      <button class="btn-action btn-hide-winner" id="btnHideReveal" onclick="hideReveal()">Hide Winner</button>
+      <button class="btn-action btn-reset" id="btnReset" onclick="confirmReset()">Reset All Votes</button>
     </div>
   </div>
 </div>
@@ -273,7 +287,12 @@ var activeTeam = "";
 var revealState = false;
 var isPolling = false;
 var useLive = false;
+var configReady = false;
 var configSavePending = false;
+var resetPending = false;
+var pollQueued = false;
+var adminSessionPass = "";
+var syncStatusTimer = null;
 
 function supaFetch(path,options){
   var opts=options||{};
@@ -285,8 +304,32 @@ function supaFetch(path,options){
   });
 }
 
+function setSyncStatus(state){
+  var el=document.getElementById("syncStatus");
+  if(!el)return;
+  el.className="sync-label";
+  if(syncStatusTimer){clearTimeout(syncStatusTimer);syncStatusTimer=null}
+  if(state==="saving"){el.textContent="Saving…";el.classList.add("saving")}
+  else if(state==="saved"){el.textContent="Saved";el.classList.add("saved");syncStatusTimer=setTimeout(function(){el.textContent=""},3000)}
+  else if(state==="error"){el.textContent="Sync failed";el.classList.add("error")}
+  else{el.textContent=""}
+}
+
+function controlsLocked(){return configSavePending||resetPending}
+
+function setVotingControlsDisabled(disabled){
+  var panel=document.getElementById("votingControlPanel");
+  var actions=document.getElementById("actionsPanel");
+  if(panel)panel.classList.toggle("panel-locked",disabled);
+  if(actions)actions.classList.toggle("panel-locked",disabled);
+  ["btnCloseAll","btnReveal","btnHideReveal","btnReset"].forEach(function(id){
+    var b=document.getElementById(id);if(b)b.disabled=disabled;
+  });
+}
+
 function pollData(){
-  if(isPolling||!useLive)return Promise.resolve();
+  if(!useLive)return Promise.resolve();
+  if(isPolling){pollQueued=true;return Promise.resolve()}
   isPolling=true;
   return Promise.all([
     supaFetch('/votes?select=*'),
@@ -294,42 +337,73 @@ function pollData(){
   ]).then(function(results){
     var rows=results[0]||[];
     var cfgRows=results[1]||[];
-    allVotes={};
-    rows.forEach(function(r){
-      if(!allVotes[r.team_id])allVotes[r.team_id]={};
-      allVotes[r.team_id][r.voter_email]={
-        name:r.voter_name,usefulness:r.usefulness,usability:r.usability,adoption:r.adoption,ts:r.created_at
-      };
-    });
+    if(!resetPending){
+      allVotes={};
+      rows.forEach(function(r){
+        if(!allVotes[r.team_id])allVotes[r.team_id]={};
+        allVotes[r.team_id][r.voter_email]={
+          name:r.voter_name,usefulness:r.usefulness,usability:r.usability,adoption:r.adoption,ts:r.created_at
+        };
+      });
+    }
     var cfg=cfgRows[0]||{};
     var dbTeam=cfg.active_team||"";
     var dbReveal=cfg.reveal_winner===true;
     if(!configSavePending){
       activeTeam=dbTeam;
       revealState=dbReveal;
-    }else if(dbTeam===activeTeam&&dbReveal===revealState){
-      configSavePending=false;
     }
     refreshAll();
-  }).catch(function(e){console.warn("Poll failed:",e)}).finally(function(){isPolling=false});
+  }).catch(function(e){console.warn("Poll failed:",e)}).finally(function(){
+    isPolling=false;
+    if(pollQueued){pollQueued=false;pollData()}
+  });
 }
+
+function pollDataQueued(){return pollData()}
 
 function startPolling(){pollData();setInterval(pollData,POLL_INTERVAL)}
 
-function sendConfig(){
-  if(!useLive)return;
-  configSavePending=true;
-  supaFetch('/config?id=eq.1',{
+function patchConfigDirect(){
+  return supaFetch('/config?id=eq.1',{
     method:'PATCH',
     headers:{'Content-Type':'application/json','Prefer':'return=minimal'},
     body:JSON.stringify({active_team:activeTeam||null,reveal_winner:revealState})
-  }).then(function(){return pollData()})
-    .catch(function(e){
-      configSavePending=false;
-      console.warn("Config failed:",e);
-      showToast("Config update failed","error");
-      return pollData();
-    });
+  });
+}
+
+function sendConfig(){
+  if(!useLive)return Promise.resolve();
+  if(configSavePending)return Promise.resolve();
+  configSavePending=true;
+  setSyncStatus("saving");
+  setVotingControlsDisabled(true);
+
+  var payload={active_team:activeTeam||null,reveal_winner:revealState};
+  var apiPromise=fetch("/api/admin-config",{
+    method:"POST",
+    headers:{"Content-Type":"application/json","X-Admin-Pass":adminSessionPass},
+    body:JSON.stringify(payload)
+  }).then(function(r){
+    if(r.ok)return r.json();
+    return r.text().then(function(t){throw new Error(t||r.status)});
+  });
+
+  return apiPromise.catch(function(){
+    return patchConfigDirect();
+  }).then(function(){
+    configSavePending=false;
+    setSyncStatus("saved");
+    setVotingControlsDisabled(false);
+    return pollDataQueued();
+  }).catch(function(e){
+    configSavePending=false;
+    setSyncStatus("error");
+    setVotingControlsDisabled(false);
+    console.warn("Config failed:",e);
+    showToast("Config update failed","error");
+    return pollDataQueued();
+  });
 }
 
 function applyConfig(cfg){
@@ -339,10 +413,63 @@ function applyConfig(cfg){
   if(cfg.POLL_INTERVAL_ADMIN)POLL_INTERVAL=cfg.POLL_INTERVAL_ADMIN;
 }
 
-fetch("/api/config").then(function(r){return r.json()}).then(applyConfig).catch(function(){});
+function setAuthLoading(loading,msg){
+  var hint=document.getElementById("authLoading");
+  var form=document.getElementById("authForm");
+  var input=document.getElementById("adminPassInput");
+  var btn=document.getElementById("authBtn");
+  if(loading){
+    hint.style.display="block";
+    hint.className="auth-hint";
+    hint.textContent=msg||"Loading configuration…";
+    form.style.display="none";
+    if(input)input.disabled=true;
+    if(btn)btn.disabled=true;
+  }else{
+    hint.style.display="none";
+    form.style.display="block";
+    if(input)input.disabled=false;
+    if(btn)btn.disabled=false;
+    setTimeout(function(){input&&input.focus()},50);
+  }
+}
+
+function initAdmin(){
+  document.getElementById("connDot").className="conn-dot loading";
+  document.getElementById("connLabel").textContent="CONFIG";
+  setAuthLoading(true);
+  fetch("/api/config").then(function(r){
+    if(!r.ok)throw new Error("config "+r.status);
+    return r.json();
+  }).then(function(cfg){
+    applyConfig(cfg);
+    configReady=true;
+    document.getElementById("connDot").className="conn-dot local";
+    document.getElementById("connLabel").textContent="READY";
+    setAuthLoading(false);
+    if(!ADMIN_PASS){
+      document.getElementById("authLoading").style.display="block";
+      document.getElementById("authForm").style.display="none";
+      document.getElementById("authLoading").className="auth-hint error";
+      document.getElementById("authLoading").textContent="Server config missing ADMIN_PASS.";
+    }
+  }).catch(function(e){
+    configReady=false;
+    document.getElementById("connDot").className="conn-dot local";
+    document.getElementById("connLabel").textContent="ERROR";
+    document.getElementById("authLoading").style.display="block";
+    document.getElementById("authForm").style.display="none";
+    document.getElementById("authLoading").className="auth-hint error";
+    document.getElementById("authLoading").textContent="Could not load /api/config. Refresh the page.";
+    console.warn("Config load failed:",e);
+  });
+}
+initAdmin();
 
 function authenticate(){
-  if(document.getElementById("adminPassInput").value===ADMIN_PASS){
+  if(!configReady){showToast("Still loading config…","error");return}
+  adminSessionPass=document.getElementById("adminPassInput").value;
+  if(adminSessionPass===ADMIN_PASS){
     document.getElementById("authScreen").style.display="none";
     document.getElementById("adminPanel").style.display="block";
     if(SUPABASE_URL&&SUPABASE_KEY){
@@ -356,14 +483,18 @@ function authenticate(){
 document.getElementById("adminPassInput").addEventListener("keydown",function(e){if(e.key==="Enter")authenticate()});
 
 function activateTeam(teamId){
-  activeTeam=teamId;sendConfig();refreshAll();
-  var t=TEAMS.find(function(x){return x.id===teamId});
-  showToast("Voting open: "+(t?t.agent:""),"success");
+  if(controlsLocked())return;
+  activeTeam=teamId;refreshAll();
+  sendConfig().then(function(){
+    var t=TEAMS.find(function(x){return x.id===teamId});
+    showToast("Voting open: "+(t?t.agent:""),"success");
+  });
 }
 
 function deactivateTeam(){
-  activeTeam="";sendConfig();refreshAll();
-  showToast("Voting closed","success");
+  if(controlsLocked())return;
+  activeTeam="";refreshAll();
+  sendConfig().then(function(){showToast("Voting closed","success")});
 }
 
 function closeAllVoting(){deactivateTeam()}
@@ -374,6 +505,7 @@ function refreshAll(){
 
 function renderTeamControls(){
   var list=document.getElementById("teamControlList");list.innerHTML="";
+  var locked=controlsLocked();
   TEAMS.forEach(function(team){
     var isActive=team.id===activeTeam;
     var tv=allVotes[team.id]||{};var count=Object.keys(tv).length;
@@ -387,6 +519,12 @@ function renderTeamControls(){
 
     var row=document.createElement("div");
     row.className="team-ctrl"+(isActive?" is-active":"");
+    var btn=document.createElement("button");
+    btn.className="tc-btn "+(isActive?"btn-deactivate":"btn-activate");
+    btn.textContent=isActive?"Close":"Open";
+    btn.disabled=locked;
+    btn.onclick=isActive?deactivateTeam:function(){activateTeam(team.id)};
+
     row.innerHTML=
       '<div class="tc-num">'+team.num+'</div>'+
       '<div class="tc-info">'+
@@ -394,10 +532,8 @@ function renderTeamControls(){
         '<div class="tc-presenter">'+team.presenter+'</div>'+
         '<div class="tc-stats"><span>'+count+'</span> votes &bull; Avg: <span>'+avg+'</span></div>'+
       '</div>'+
-      '<div class="tc-status '+(isActive?"st-active":"st-closed")+'">'+(isActive?"ACTIVE":"CLOSED")+'</div>'+
-      '<button class="tc-btn '+(isActive?"btn-deactivate":"btn-activate")+'" onclick="'+(isActive?"deactivateTeam()":"activateTeam('"+team.id+"')")+'">'+
-        (isActive?"Close":"Open")+
-      '</button>';
+      '<div class="tc-status '+(isActive?"st-active":"st-closed")+'">'+(isActive?"ACTIVE":"CLOSED")+'</div>';
+    row.appendChild(btn);
     list.appendChild(row);
   });
 }
@@ -433,19 +569,56 @@ function refreshStats(){
   });
 }
 
-function triggerReveal(){revealState=true;sendConfig();showToast("Winner revealed!","success")}
-function hideReveal(){revealState=false;sendConfig();showToast("Winner hidden","success")}
+function triggerReveal(){
+  if(controlsLocked())return;
+  revealState=true;sendConfig().then(function(){showToast("Winner revealed!","success")});
+}
+function hideReveal(){
+  if(controlsLocked())return;
+  revealState=false;sendConfig().then(function(){showToast("Winner hidden","success")});
+}
 
 function confirmReset(){
+  if(controlsLocked())return;
   if(!confirm("Delete ALL votes? This cannot be undone."))return;
   if(!confirm("Are you absolutely sure?"))return;
-  if(useLive){
-    supaFetch('/votes?id=gt.0',{method:'DELETE'})
-      .then(function(){allVotes={};refreshAll();setTimeout(pollData,1000)})
-      .catch(function(){showToast("Reset failed","error")});
+  resetPending=true;
+  setSyncStatus("saving");
+  setVotingControlsDisabled(true);
+  allVotes={};
+  refreshAll();
+
+  function finishReset(ok){
+    resetPending=false;
+    setVotingControlsDisabled(false);
+    if(ok){
+      setSyncStatus("saved");
+      localStorage.removeItem("asw_allVotes");
+      showToast("All votes cleared","success");
+      return pollDataQueued();
+    }
+    setSyncStatus("error");
+    showToast("Reset failed","error");
+    return pollDataQueued();
   }
-  allVotes={};localStorage.removeItem("asw_allVotes");refreshAll();
-  showToast("All votes cleared","success");
+
+  if(!useLive){
+    localStorage.removeItem("asw_allVotes");
+    finishReset(true);
+    return;
+  }
+
+  fetch("/api/admin-reset",{
+    method:"POST",
+    headers:{"Content-Type":"application/json","X-Admin-Pass":adminSessionPass}
+  }).then(function(r){
+    if(!r.ok)return r.text().then(function(t){throw new Error(t)});
+    return finishReset(true);
+  }).catch(function(){
+    return supaFetch('/votes?id=gt.0',{method:'DELETE'})
+      .then(function(){return finishReset(true)})
+      .catch(function(){return finishReset(false)});
+  });
 }
 
 function showToast(msg,type){

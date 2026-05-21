@@ -608,6 +608,10 @@ var prevActiveTeam = "";
 var winnerRevealed = false;
 var isPolling = false;
 var useLive = false;
+var voteSavePending = false;
+var pendingVoteTeam = "";
+var pendingVote = null;
+var pollQueued = false;
 
 /* ═══════════════════════════════════════
    SUPABASE API
@@ -623,9 +627,10 @@ function supaFetch(path,options){
 }
 
 function pollData(){
-  if(isPolling||!useLive)return;
+  if(!useLive)return Promise.resolve();
+  if(isPolling){pollQueued=true;return Promise.resolve()}
   isPolling=true;
-  Promise.all([
+  return Promise.all([
     supaFetch('/votes?select=*'),
     supaFetch('/config?id=eq.1&select=*')
   ]).then(function(results){
@@ -641,13 +646,17 @@ function pollData(){
     });
 
     if(voterEmail){
-      myVotes={};
-      Object.keys(allVotes).forEach(function(tid){
-        if(allVotes[tid][voterEmail]){
-          var v=allVotes[tid][voterEmail];
-          myVotes[tid]={usefulness:v.usefulness,usability:v.usability,adoption:v.adoption};
-        }
-      });
+      if(!voteSavePending){
+        myVotes={};
+        Object.keys(allVotes).forEach(function(tid){
+          if(allVotes[tid][voterEmail]){
+            var v=allVotes[tid][voterEmail];
+            myVotes[tid]={usefulness:v.usefulness,usability:v.usability,adoption:v.adoption};
+          }
+        });
+      }else if(pendingVoteTeam&&pendingVote){
+        myVotes[pendingVoteTeam]=pendingVote;
+      }
       localStorage.setItem("asw_voter2",JSON.stringify({name:voterName,email:voterEmail,votes:myVotes}));
     }
 
@@ -669,7 +678,10 @@ function pollData(){
     var reveal=cfg.reveal_winner===true;
     if(reveal&&!winnerRevealed){winnerRevealed=true;showWinnerCeremony()}
     else if(!reveal&&winnerRevealed){winnerRevealed=false;closeWinnerReveal()}
-  }).catch(function(e){console.warn("Poll failed:",e)}).finally(function(){isPolling=false});
+  }).catch(function(e){console.warn("Poll failed:",e)}).finally(function(){
+    isPolling=false;
+    if(pollQueued){pollQueued=false;pollData()}
+  });
 }
 
 function startPolling(){
@@ -683,15 +695,35 @@ function sendVote(teamId,vote){
     allVotes[teamId][voterEmail]={name:voterName,usefulness:vote.usefulness,usability:vote.usability,adoption:vote.adoption,ts:Date.now()};
     localStorage.setItem("asw_allVotes",JSON.stringify(allVotes));
     updateLeaderboard();
-    return;
+    return Promise.resolve();
   }
-  supaFetch('/votes?on_conflict=voter_email,team_id',{
+  voteSavePending=true;
+  pendingVoteTeam=teamId;
+  pendingVote={usefulness:vote.usefulness,usability:vote.usability,adoption:vote.adoption};
+  var btn=document.getElementById("btnSubmitRating");
+  if(btn)btn.disabled=true;
+
+  return supaFetch('/votes?on_conflict=voter_email,team_id',{
     method:'POST',
     headers:{'Content-Type':'application/json','Prefer':'resolution=merge-duplicates,return=minimal'},
     body:JSON.stringify({voter_email:voterEmail,voter_name:voterName,team_id:teamId,
       usefulness:vote.usefulness,usability:vote.usability,adoption:vote.adoption})
-  }).then(function(){setTimeout(pollData,1000)}).catch(function(e){
-    console.warn("Vote failed:",e);showToast("Vote failed, try again","error");
+  }).then(function(){
+    voteSavePending=false;
+    pendingVoteTeam="";
+    pendingVote=null;
+    return pollData();
+  }).catch(function(e){
+    voteSavePending=false;
+    pendingVoteTeam="";
+    pendingVote=null;
+    delete myVotes[teamId];
+    localStorage.setItem("asw_voter2",JSON.stringify({name:voterName,email:voterEmail,votes:myVotes}));
+    console.warn("Vote failed:",e);
+    showToast("Vote failed, try again","error");
+    renderTeamCards();
+  }).finally(function(){
+    if(btn)btn.disabled=!CRITERIA.every(function(c){return currentRatings[c]>0});
   });
 }
 
@@ -895,16 +927,16 @@ function closeRatingModal(){
 function submitRating(){
   if(!currentRatingTeamId) return;
   if(CRITERIA.some(function(c){return currentRatings[c]===0})) return;
+  if(voteSavePending) return;
 
   var teamId=currentRatingTeamId;
   var vote={usefulness:currentRatings.usefulness,usability:currentRatings.usability,adoption:currentRatings.adoption};
   myVotes[teamId]=vote;
   localStorage.setItem("asw_voter2",JSON.stringify({name:voterName,email:voterEmail,votes:myVotes}));
-  sendVote(teamId,vote);
 
   var team=TEAMS.find(function(t){return t.id===teamId});
   closeRatingModal();
-  renderTeamCards();
+  sendVote(teamId,vote).then(function(){renderTeamCards()});
 
   var overlay=document.createElement("div");
   overlay.className="vote-success-overlay";

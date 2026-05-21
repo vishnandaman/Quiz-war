@@ -259,8 +259,6 @@ body::before{
 
     <div class="panel" id="actionsPanel">
       <div class="panel-title">ACTIONS</div>
-      <button class="btn-action btn-winner" id="btnReveal" onclick="triggerReveal()">Reveal Winner</button>
-      <button class="btn-action btn-hide-winner" id="btnHideReveal" onclick="hideReveal()">Hide Winner</button>
       <button class="btn-action btn-reset" id="btnReset" onclick="confirmReset()">Reset All Votes</button>
     </div>
   </div>
@@ -322,7 +320,7 @@ function setVotingControlsDisabled(disabled){
   var actions=document.getElementById("actionsPanel");
   if(panel)panel.classList.toggle("panel-locked",disabled);
   if(actions)actions.classList.toggle("panel-locked",disabled);
-  ["btnCloseAll","btnReveal","btnHideReveal","btnReset"].forEach(function(id){
+  ["btnCloseAll","btnReset"].forEach(function(id){
     var b=document.getElementById(id);if(b)b.disabled=disabled;
   });
 }
@@ -567,15 +565,6 @@ function refreshStats(){
       "<td>"+r.u+"</td><td>"+r.us+"</td><td>"+r.a+"</td>"+'<td class="td-score">'+r.avg.toFixed(2)+"</td>";
     tbody.appendChild(tr);
   });
-}
-
-function triggerReveal(){
-  if(controlsLocked())return;
-  revealState=true;sendConfig().then(function(){showToast("Winner revealed!","success")});
-}
-function hideReveal(){
-  if(controlsLocked())return;
-  revealState=false;sendConfig().then(function(){showToast("Winner hidden","success")});
 }
 
 function confirmReset(){

@@ -572,15 +572,13 @@ body::before{
   </div>
 </div>
 
-<script src="config.js"></script>
 <script>
 /* ═══════════════════════════════════════
-   CONFIG
+   CONFIG (loaded from /api/config on Vercel; config.js is local-only)
    ═══════════════════════════════════════ */
-var CFG = window.APP_CONFIG || {};
-var SUPABASE_URL = CFG.SUPABASE_URL || "";
-var SUPABASE_KEY = CFG.SUPABASE_KEY || "";
-var POLL_INTERVAL = CFG.POLL_INTERVAL_VOTER || 8000;
+var SUPABASE_URL = "";
+var SUPABASE_KEY = "";
+var POLL_INTERVAL = 8000;
 
 var TEAMS = [
   {id:"agent-fit",num:1,agent:"Agent-Fit",presenter:"Harshwardhan Patil",

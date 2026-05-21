@@ -252,13 +252,11 @@ body::before{
   </div>
 </div>
 
-<script src="config.js"></script>
 <script>
-var CFG = window.APP_CONFIG || {};
-var SUPABASE_URL = CFG.SUPABASE_URL || "";
-var SUPABASE_KEY = CFG.SUPABASE_KEY || "";
-var ADMIN_PASS = CFG.ADMIN_PASS ;
-var POLL_INTERVAL = CFG.POLL_INTERVAL_ADMIN || 5000;
+var SUPABASE_URL = "";
+var SUPABASE_KEY = "";
+var ADMIN_PASS = "";
+var POLL_INTERVAL = 5000;
 
 var TEAMS = [
   {id:"agent-fit",num:1,agent:"Agent-Fit",presenter:"Harshwardhan Patil"},
@@ -275,6 +273,7 @@ var activeTeam = "";
 var revealState = false;
 var isPolling = false;
 var useLive = false;
+var configSavePending = false;
 
 function supaFetch(path,options){
   var opts=options||{};
@@ -287,8 +286,9 @@ function supaFetch(path,options){
 }
 
 function pollData(){
-  if(isPolling||!useLive)return;isPolling=true;
-  Promise.all([
+  if(isPolling||!useLive)return Promise.resolve();
+  isPolling=true;
+  return Promise.all([
     supaFetch('/votes?select=*'),
     supaFetch('/config?id=eq.1&select=*')
   ]).then(function(results){
@@ -302,8 +302,14 @@ function pollData(){
       };
     });
     var cfg=cfgRows[0]||{};
-    activeTeam=cfg.active_team||"";
-    revealState=cfg.reveal_winner===true;
+    var dbTeam=cfg.active_team||"";
+    var dbReveal=cfg.reveal_winner===true;
+    if(!configSavePending){
+      activeTeam=dbTeam;
+      revealState=dbReveal;
+    }else if(dbTeam===activeTeam&&dbReveal===revealState){
+      configSavePending=false;
+    }
     refreshAll();
   }).catch(function(e){console.warn("Poll failed:",e)}).finally(function(){isPolling=false});
 }
@@ -312,20 +318,28 @@ function startPolling(){pollData();setInterval(pollData,POLL_INTERVAL)}
 
 function sendConfig(){
   if(!useLive)return;
+  configSavePending=true;
   supaFetch('/config?id=eq.1',{
     method:'PATCH',
     headers:{'Content-Type':'application/json','Prefer':'return=minimal'},
-    body:JSON.stringify({active_team:activeTeam,reveal_winner:revealState})
-  }).then(function(){setTimeout(pollData,500)})
-    .catch(function(e){console.warn("Config failed:",e);showToast("Config update failed","error")});
+    body:JSON.stringify({active_team:activeTeam||null,reveal_winner:revealState})
+  }).then(function(){return pollData()})
+    .catch(function(e){
+      configSavePending=false;
+      console.warn("Config failed:",e);
+      showToast("Config update failed","error");
+      return pollData();
+    });
 }
 
-fetch("/api/config").then(function(r){return r.json()}).then(function(cfg){
+function applyConfig(cfg){
   if(cfg.SUPABASE_URL)SUPABASE_URL=cfg.SUPABASE_URL;
   if(cfg.SUPABASE_KEY)SUPABASE_KEY=cfg.SUPABASE_KEY;
   if(cfg.ADMIN_PASS)ADMIN_PASS=cfg.ADMIN_PASS;
   if(cfg.POLL_INTERVAL_ADMIN)POLL_INTERVAL=cfg.POLL_INTERVAL_ADMIN;
-}).catch(function(){});
+}
+
+fetch("/api/config").then(function(r){return r.json()}).then(applyConfig).catch(function(){});
 
 function authenticate(){
   if(document.getElementById("adminPassInput").value===ADMIN_PASS){
